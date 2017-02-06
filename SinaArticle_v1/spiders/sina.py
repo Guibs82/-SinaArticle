@@ -2,7 +2,9 @@
 import scrapy
 from scrapy.linkextractors import LinkExtractor
 from scrapy.spiders import CrawlSpider, Rule
+from scrapy.http import Request
 # from SinaArticle_v1 import SinaArticleItem
+import json
 import os
 import sys
 reload(sys)
@@ -25,16 +27,27 @@ class SinaSpider(CrawlSpider):
     allowed_domains = ['sina.com.cn']
     start_urls = ['http://news.sina.com.cn/guide/']
 
+    # LinkExtractors
+        # 导航页
+    guide_LE = LinkExtractor(allow="/guide/")
+        # 排行
+    ph_LE = LinkExtractor(allow="/hotnews/")
+
 
     rules = (
-
+        Rule(link_extractor=guide_LE, callback="parse_guide"),
+        Rule(link_extractor=ph_LE, callback="parse_hotnews"),
     )
 
-    def parse(self, response):
+    def parse_guide(self, response):
         """
         根据导航页来创建一级类别和二级类别的目录,
             并在目录下创建该类别URL 的txt 文件
         """
+        print "====="
+        print "parse_guide"
+        print "====="
+
         parentTags = response.xpath("//h3[@class='tit02']")
         for parentTag in parentTags:
             parentTitle = parentTag.xpath(".//text()").extract_first()
@@ -66,3 +79,65 @@ class SinaSpider(CrawlSpider):
                     subUrl = "该一级类别没有URL"
                 with open(subDirPath + '/' + subTitle + '.txt', 'w') as subUrlTxT:
                     subUrlTxT.write(subUrl)
+
+    def parse_hotnews(self, response):
+        """
+        解析新闻排行页面
+            获取该页面中获取具体新闻的AJax url
+        """
+        print "====="
+        print "parse_hotnews"
+        print "====="
+
+        news_ajaxes = set(response.xpath("//script[contains(@src,'http://top')]/@src").extract())
+
+        for news_ajax in news_ajaxes:
+            print "========"
+            print news_ajax
+            yield Request(url=news_ajax, callback=self.parse_news_json)
+            print "========"
+
+    def parse_news_json(self, response):
+        """
+        解析新闻排行页面Ajax
+            获取具体新闻url的集合, 并处理
+        """
+        print "====="
+        print "parse_hotnews"
+        print "====="
+        full_response = response.body
+        json_response = full_response[full_response.index("["): full_response.index("]")+1]
+        json_response = json.loads(json_response)
+        print "++++++++++++"
+        for news_json in json_response:
+            # print news_json[u"title"]
+            # print news_json[u'url']
+            yield Request(news_json[u'url'], callback=self.parse_hotnews_news)
+        print "++++++++++++"
+
+    def parse_hotnews_news(self, response):
+        """
+        处理新闻 -- 排行中的具体新闻页面
+        """
+        print "====="
+        print "parse_hotnews_news"
+        print "====="
+
+        filePath = "../Data/新闻/排行/"
+        from_url = response.url
+
+        if from_url.startswith("http://news.sina.com.cn"):
+            fileName = response.xpath("//h1[@id='artibodyTitle']//text()").extract_first() + '.txt'
+            fileContent = ""
+
+            thisNewsPath = filePath + fileName
+
+            news_title = response.xpath("//h1[@id='artibodyTitle']//text()").extract_first()
+            news_contents = response.xpath("//div[@class='article article_16']/p/text()").extract()
+
+            fileContent = fileContent + news_title + "\n\n"
+            for content in news_contents:
+                fileContent = fileContent + content + '\n'
+
+            with open(thisNewsPath, 'w') as thisNewsFile:
+                thisNewsFile.write(fileContent)
