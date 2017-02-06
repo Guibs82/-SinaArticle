@@ -36,7 +36,7 @@ class SinaSpider(CrawlSpider):
 
     rules = (
         Rule(link_extractor=guide_LE, callback="parse_guide"),
-        Rule(link_extractor=ph_LE, callback="parse_hotnews"),
+        Rule(link_extractor=ph_LE, callback="parse_hotnews_index"),
     )
 
     def parse_guide(self, response):
@@ -80,31 +80,30 @@ class SinaSpider(CrawlSpider):
                 with open(subDirPath + '/' + subTitle + '.txt', 'w') as subUrlTxT:
                     subUrlTxT.write(subUrl)
 
-    def parse_hotnews(self, response):
+    def parse_hotnews_index(self, response):
         """
         解析新闻排行页面
             获取该页面中获取具体新闻的AJax url
         """
         print "====="
-        print "parse_hotnews"
+        print "parse_hotnews_index"
         print "====="
 
         news_ajaxes = set(response.xpath("//script[contains(@src,'http://top')]/@src").extract())
 
         for news_ajax in news_ajaxes:
-            print "========"
-            print news_ajax
-            yield Request(url=news_ajax, callback=self.parse_news_json)
-            print "========"
+            print news_ajax + "||||||||||||||||||||||"
+            yield Request(url=news_ajax, callback=self.parse_hotnews_ajax)
 
-    def parse_news_json(self, response):
+    def parse_hotnews_ajax(self, response):
         """
         解析新闻排行页面Ajax
             获取具体新闻url的集合, 并处理
         """
         print "====="
-        print "parse_hotnews"
+        print "parse_hotnews_ajax"
         print "====="
+
         full_response = response.body
         json_response = full_response[full_response.index("["): full_response.index("]")+1]
         json_response = json.loads(json_response)
@@ -127,6 +126,7 @@ class SinaSpider(CrawlSpider):
         from_url = response.url
 
         if from_url.startswith("http://news.sina.com.cn"):
+            # 以http://news.sina.com.cn 开头的url
             fileName = response.xpath("//h1[@id='artibodyTitle']//text()").extract_first() + '.txt'
             fileContent = ""
 
@@ -134,6 +134,22 @@ class SinaSpider(CrawlSpider):
 
             news_title = response.xpath("//h1[@id='artibodyTitle']//text()").extract_first()
             news_contents = response.xpath("//div[@class='article article_16']/p/text()").extract()
+
+            fileContent = fileContent + news_title + "\n\n"
+            for content in news_contents:
+                fileContent = fileContent + content + '\n'
+
+            with open(thisNewsPath, 'w') as thisNewsFile:
+                thisNewsFile.write(fileContent)
+        elif from_url.startswith("http://tech.sina.com.cn"):
+            # 以http://tech.sina.com.cn 开头的url
+            fileName = response.xpath("//h1[@id='main_title']//text()").extract_first() + '.txt'
+            fileContent = ""
+
+            thisNewsPath = filePath + fileName
+
+            news_title = response.xpath("//h1[@id='main_title']//text()").extract_first()
+            news_contents = response.xpath("//div[@class='content']//p/text()").extract()
 
             fileContent = fileContent + news_title + "\n\n"
             for content in news_contents:
